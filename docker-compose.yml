@@ -1,0 +1,44 @@
+version: '3.9'
+
+#This service depends on the postgis_postgis docker network
+#Start the posrgis container first
+
+#1. Create the folders data and servers
+#2. Create the file servers/servers.json, empty
+#3. Change the owner for the folder data
+#     sudo chown -R 5050:5050 data
+#4. Start the server:
+#   docker-compose up
+#5. Visit the page http://localost:5050
+#por un bug de docker-compose, no lee correctamente .env.dev
+#para la sustitución de variables en el propio docker compose
+#sinembargo .env sí lo lee.
+#Como se puede tener varios ficheros de configuración, uso los dos
+
+services:
+    hadoop:
+      build: ./apache_hadoop
+      container_name: hadoop_bigdata_01
+      ports:
+        # - "8088:8088"   
+        # - "9870:9870"   
+        # - "9864:9864"   
+        # - "8020:8020"   
+        - ${DEVELOP_RESOURCE_MANAGER_WEB_UI_PORT}:8088 # Resource Manager Web UI
+        - ${DEVELOP_HDFS_NAMENODE_WEB_UI_PORT}:9870 # HDFS NameNode Web UI
+        - ${DEVELOP_DATANODE_WEB_UI_PORT}:9864 # DataNode Web UI
+        - ${DEVELOP_HDFS_COMMUNICATION_PORT}:8020 # HDFS communication port
+      hostname: hadoop_bigdata_host
+      env_file:
+      - .env
+      - .env.dev
+      volumes:
+        - ./hadoop_data:/hadoop_data
+      tty: true
+      stdin_open: true
+      networks:
+        - hadoop_bigdata_net
+networks:
+  hadoop_bigdata_net:
+      external: true
+      driver: bridge
