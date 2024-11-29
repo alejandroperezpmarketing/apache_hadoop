@@ -1,44 +1,234 @@
-version: '3.9'
+#to check conectivity
 
-#This service depends on the postgis_postgis docker network
-#Start the posrgis container first
+#Check DataNode RPC Port (9866): Ensure that the DataNodes' RPC ports (typically 9866) are open and reachable. For example:
+#telnet 172.28.0.8 9864
 
-#1. Create the folders data and servers
-#2. Create the file servers/servers.json, empty
-#3. Change the owner for the folder data
-#     sudo chown -R 5050:5050 data
-#4. Start the server:
-#   docker-compose up
-#5. Visit the page http://localost:5050
-#por un bug de docker-compose, no lee correctamente .env.dev
-#para la sustitución de variables en el propio docker compose
-#sinembargo .env sí lo lee.
-#Como se puede tener varios ficheros de configuración, uso los dos
+#Ping Each DataNode: You can check if each DataNode is reachable by pinging the IP addresses from any other machine in the cluster or from the NameNode host:
+# telnet 172.28.0.2 9866
+# telnet 172.28.0.3 9866
+# telnet 172.28.0.4 9866
+# telnet 172.28.0.6 9866
+# telnet 172.28.0.8 9866
+
+# Verify DataNode Logs: Check the DataNode logs for any connectivity or health issues. The log files are typically located in the $HADOOP_LOG_DIR or /var/log/hadoop/hdfs/ on each DataNode. Look for entries related to heartbeat, block report, or datanode registration.
+# hadoop fsck /
+
+#Check for Block Reports: As mentioned in the output, the Last Block Report timestamp is recent for all DataNodes, but you can also monitor the DataNode logs to ensure block reports are being sent periodically:
+#tail -f /var/log/hadoop/hdfs/datanode.log | grep "BLOCK* processReport" #to check blocked reports
+
+
+# deploy:
+#       resources:
+#           limits:
+#             memory: 2g
+#             cpus: "1.0"
+#           reservations:
+#             memory: 1g
+#             cpus: "0.5"
+
+version: "3.8"
 
 services:
-    hadoop:
-      build: ./apache_hadoop
-      container_name: hadoop_bigdata_01
-      ports:
-        # - "8088:8088"   
-        # - "9870:9870"   
-        # - "9864:9864"   
-        # - "8020:8020"   
-        - ${DEVELOP_RESOURCE_MANAGER_WEB_UI_PORT}:8088 # Resource Manager Web UI
-        - ${DEVELOP_HDFS_NAMENODE_WEB_UI_PORT}:9870 # HDFS NameNode Web UI
-        - ${DEVELOP_DATANODE_WEB_UI_PORT}:9864 # DataNode Web UI
-        - ${DEVELOP_HDFS_COMMUNICATION_PORT}:8020 # HDFS communication port
-      hostname: hadoop_bigdata_host
-      env_file:
-      - .env
-      - .env.dev
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: always
+    ports:
+      # - 9870:9870
+      # - 9000:9000
+      - ${FORWARDED_PORT_NAMENODE_1}:9000
+      - ${FORWARDED_PORT_NAMENODE_2}:9870
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+    mem_limit: 2g
+    cpus: "1.0"
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    restart: always
+    volumes:
+      - hadoop_datanode1:/hadoop/dfs/data
+    ports:
+      - ${FORWARDED_PORT_DATANODE_1}:9864
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+  
+  datanode2:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode2
+    restart: always
+    volumes:
+      - hadoop_datanode2:/hadoop/dfs/data
+    ports:
+      - ${FORWARDED_PORT_DATANODE_2}:9865
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+
+  datanode3:
+      image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+      container_name: datanode3
+      restart: always
       volumes:
-        - ./hadoop_data:/hadoop_data
-      tty: true
-      stdin_open: true
+        - hadoop_datanode3:/hadoop/dfs/data
+      ports:
+      - ${FORWARDED_PORT_DATANODE_3}:9866
+      environment:
+        SERVICE_PRECONDITION: "namenode:9870"
+      env_file:
+        - .env
+        - .env.dev
       networks:
-        - hadoop_bigdata_net
+        - hbase
+  
+  datanode4:
+      image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+      container_name: datanode4
+      restart: always
+      volumes:
+        - hadoop_datanode4:/hadoop/dfs/data
+      ports:
+      - ${FORWARDED_PORT_DATANODE_4}:9867
+      environment:
+        SERVICE_PRECONDITION: "namenode:9870"
+      env_file:
+        - .env
+        - .env.dev
+      networks:
+        - hbase
+
+  datanode5:
+      image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+      container_name: datanode5
+      restart: always
+      volumes:
+        - hadoop_datanode5:/hadoop/dfs/data
+      ports:
+      - ${FORWARDED_PORT_DATANODE_5}:9868
+      environment:
+        SERVICE_PRECONDITION: "namenode:9870"
+      env_file:
+        - .env
+        - .env.dev
+      networks:
+        - hbase
+      
+
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    restart: always
+    ports:
+      - ${FORWARDED_PORT_RESOURCE_MANAGER}:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9865 datanode3:9866 datanode4:9867 datanode5:9868"
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+    mem_limit: 2g
+    cpus: "1.0"
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager
+    restart: always
+    ports:
+      - ${FORWARDED_PORT_NODE_MANAGER}:8042
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9865 datanode3:9866 datanode4:9867 datanode5:9868 resourcemanager:8088"
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+    
+    mem_limit: 2g
+    cpus: "1.0"
+        
+  
+  historyserver:
+    image: bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8
+    container_name: historyserver
+    restart: always
+    ports:
+      - ${FORWARDED_PORT_HISTORY_MANAGER}:8188
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode1:9864 datanode2:9865 datanode3:9866 datanode4:9867 datanode5:9868 resourcemanager:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+        - .env
+        - .env.dev
+    networks:
+      - hbase
+    mem_limit: 2g
+    cpus: "1.0"
+
+volumes:
+  hadoop_namenode:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/namenode
+      o: bind
+
+  hadoop_datanode1:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/datanode/datanode1
+      o: bind
+  hadoop_datanode2:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/datanode/datanode2
+      o: bind
+  hadoop_datanode3:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/datanode/datanode3
+      o: bind
+  hadoop_datanode4:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/datanode/datanode4
+      o: bind
+  hadoop_datanode5:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/datanode/datanode5
+      o: bind
+  hadoop_historyserver:
+    driver: local
+    driver_opts:
+      type: none
+      device: ./data/historyserver
+      o: bind
+
 networks:
-  hadoop_bigdata_net:
-      external: true
-      driver: bridge
+  hbase:
+    driver: bridge
+    external: true
